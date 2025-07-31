@@ -9,6 +9,7 @@
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
     />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
       * {
         margin: 0;
@@ -147,10 +148,6 @@
       </p>
       <div class="controls">
         <a href="output.xlsx" class="btn success">📥 Download Excel Data</a>
-        <a href="data.json" class="btn">📄 View JSON Data</a>
-        <a href="https://github.com/Lascade-Co/marine-user-plot" class="btn"
-          >📂 View Source</a
-        >
       </div>
     </div>
 
@@ -158,18 +155,41 @@
     <div id="loading" class="loading">🔄 Loading marine data...</div>
 
     <script>
-      // Initialize map
+      // Function to get minimum zoom based on screen width to prevent seeing multiple distant places
+      function getMinZoomForScreen() {
+        const screenWidth = window.innerWidth;
+
+        if (screenWidth <= 480) {
+          // Mobile phones - allow more zoom out
+          return 2;
+        } else if (screenWidth <= 768) {
+          // Tablets
+          return 2;
+        } else if (screenWidth <= 1200) {
+          // Laptops
+          return 3;
+        } else {
+          // Large desktop screens - slightly higher to prevent seeing too much
+          return 4;
+        }
+      }
+
+      // Initialize map with dynamic minimum zoom
       var map = L.map("map", {
         center: [20, 0],
         zoom: 2,
+        minZoom: getMinZoomForScreen(),
+        maxZoom: 18, // Allow full detail
         zoomControl: true,
         worldCopyJump: true,
       });
 
-      // Add tile layer
+      // Add tile layer with English labels
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap contributors",
         maxZoom: 18,
+        // Force English language for place names
+        language: "en",
       }).addTo(map);
 
       // Define custom icons with better styling
@@ -222,19 +242,38 @@
         return icons.unknown;
       }
 
-      // Load and display data
-      fetch("data.json")
+      // Load and display data from Excel file
+      fetch("output.xlsx")
         .then((response) => {
           if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
           }
-          return response.json();
+          return response.arrayBuffer();
         })
-        .then((data) => {
+        .then((arrayBuffer) => {
+          // Parse Excel file
+          const workbook = XLSX.read(arrayBuffer, { type: "array" });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
           document.getElementById("loading").style.display = "none";
 
-          if (!Array.isArray(data) || data.length === 0) {
-            throw new Error("No data found or invalid data format");
+          if (!Array.isArray(jsonData) || jsonData.length <= 1) {
+            throw new Error("No data found or invalid Excel format");
+          }
+
+          // Skip header row and convert to data format
+          const data = [];
+          for (let i = 1; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            if (row.length >= 3) {
+              data.push({
+                lat: row[0],
+                lon: row[1],
+                status: row[3] || "Unknown",
+              });
+            }
           }
 
           var stats = { onshore: 0, offshore: 0, inland: 0, unknown: 0 };
@@ -256,7 +295,7 @@
               var icon = getIcon(status);
 
               // Count statistics
-              var statusLower = status.toLowerCase();
+              var statusLower = status.toString().toLowerCase();
               if (statusLower.includes("onshore")) stats.onshore++;
               else if (statusLower.includes("offshore")) stats.offshore++;
               else if (statusLower.includes("inland")) stats.inland++;
@@ -314,26 +353,38 @@
           };
           legend.addTo(map);
 
-          // Fit map to show all markers
+          // Fit map to show all markers naturally
           if (markers.length > 0) {
             var group = new L.featureGroup(markers);
             map.fitBounds(group.getBounds().pad(0.05));
 
-            // Ensure minimum zoom level
-            if (map.getZoom() > 10) {
-              map.setZoom(10);
+            // Only enforce minimum zoom to prevent seeing multiple distant places
+            const minZoom = getMinZoomForScreen();
+            if (map.getZoom() < minZoom) {
+              map.setZoom(minZoom);
             }
           }
 
-          console.log(`Loaded ${data.length} points successfully`);
+          // Handle window resize to update minimum zoom
+          window.addEventListener("resize", function () {
+            const newMinZoom = getMinZoomForScreen();
+            map.options.minZoom = newMinZoom;
+
+            // Adjust current zoom if it's below new minimum
+            if (map.getZoom() < newMinZoom) {
+              map.setZoom(newMinZoom);
+            }
+          });
+
+          console.log(`Loaded ${data.length} points successfully from Excel`);
         })
         .catch((error) => {
-          console.error("Error loading data:", error);
+          console.error("Error loading Excel data:", error);
           document.getElementById("loading").innerHTML = `
                     <div class="error">
                         <h3>❌ Error Loading Data</h3>
                         <p>${error.message}</p>
-                        <p>Please check that the data.json file exists and is properly formatted.</p>
+                        <p>Please check that the output.xlsx file exists and is properly formatted.</p>
                         <button onclick="location.reload()" class="btn" style="margin-top: 10px; border: none; cursor: pointer;">
                             🔄 Retry
                         </button>

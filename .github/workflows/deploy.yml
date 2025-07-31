@@ -47,28 +47,10 @@ jobs:
           echo "Running classification script..."
           python script.py
 
-      - name: Use existing static website
-        run: |
-          mkdir -p docs
-          # Copy the existing static site file as index.html
-          cp static-site.html docs/index.html
-
-      - name: Copy processed file to docs
-        run: |
-          cp output.xlsx docs/
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: processed-marine-data
-          path: |
-            output.xlsx
-            docs/
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/original'
         with:
           personal_token: ${{ secrets.PERSONAL_TOKEN }}
-          publish_dir: ./docs
-
+          publish_dir: ./
