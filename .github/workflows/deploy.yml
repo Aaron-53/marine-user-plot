@@ -50,8 +50,7 @@ jobs:
       - name: Use existing static website
         run: |
           mkdir -p docs
-          # Copy the existing static site file as index.html
-          cp static-site.html docs/index.html
+          cp index.html docs/index.html
 
       - name: Copy processed file to docs
         run: |
