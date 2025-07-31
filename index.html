@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Marine Data Classification - Static Site</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+      }
+
+      .header {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 1rem;
+        text-align: center;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+
+      .header h1 {
+        color: #333;
+        margin-bottom: 0.5rem;
+      }
+
+      .header p {
+        color: #666;
+        margin-bottom: 1rem;
+      }
+
+      .controls {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .btn {
+        padding: 8px 16px;
+        background: #3498db;
+        color: white;
+        text-decoration: none;
+        border-radius: 4px;
+        transition: background 0.3s;
+      }
+
+      .btn:hover {
+        background: #2980b9;
+      }
+
+      .btn.success {
+        background: #27ae60;
+      }
+
+      .btn.success:hover {
+        background: #229954;
+      }
+
+      #map {
+        height: calc(100vh - 120px);
+        margin: 0;
+      }
+
+      .legend {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        font-size: 14px;
+      }
+
+      .legend h4 {
+        margin: 0 0 10px 0;
+        color: #333;
+        font-size: 16px;
+      }
+
+      .legend-item {
+        display: flex;
+        align-items: center;
+        margin: 8px 0;
+      }
+
+      .legend-color {
+        width: 18px;
+        height: 18px;
+        margin-right: 10px;
+        border-radius: 50%;
+        border: 2px solid #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+      }
+
+      .stats {
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+        font-weight: bold;
+        color: #2c3e50;
+      }
+
+      .loading {
+        text-align: center;
+        padding: 2rem;
+        color: #666;
+      }
+
+      .error {
+        text-align: center;
+        padding: 2rem;
+        color: #e74c3c;
+        background: #fdf2f2;
+        margin: 1rem;
+        border-radius: 8px;
+        border: 1px solid #fadbd8;
+      }
+
+      @media (max-width: 768px) {
+        .controls {
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .legend {
+          font-size: 12px;
+          padding: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h1>🌊 Marine Data Classification</h1>
+      <p>
+        Automated shore status classification results - Updated automatically
+        via GitHub Actions
+      </p>
+      <div class="controls">
+        <a href="output.xlsx" class="btn success">📥 Download Excel Data</a>
+        <a href="data.json" class="btn">📄 View JSON Data</a>
+        <a href="https://github.com/Lascade-Co/marine-user-plot" class="btn"
+          >📂 View Source</a
+        >
+      </div>
+    </div>
+
+    <div id="map"></div>
+    <div id="loading" class="loading">🔄 Loading marine data...</div>
+
+    <script>
+      // Initialize map
+      var map = L.map("map", {
+        center: [20, 0],
+        zoom: 2,
+        zoomControl: true,
+        worldCopyJump: true,
+      });
+
+      // Add tile layer
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors",
+        maxZoom: 18,
+      }).addTo(map);
+
+      // Define custom icons with better styling
+      var iconBase =
+        "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/";
+
+      var icons = {
+        onshore: L.icon({
+          iconUrl: iconBase + "marker-icon-2x-green.png",
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowUrl: iconBase + "marker-shadow.png",
+          shadowSize: [41, 41],
+        }),
+        offshore: L.icon({
+          iconUrl: iconBase + "marker-icon-2x-blue.png",
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowUrl: iconBase + "marker-shadow.png",
+          shadowSize: [41, 41],
+        }),
+        inland: L.icon({
+          iconUrl: iconBase + "marker-icon-2x-gold.png",
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowUrl: iconBase + "marker-shadow.png",
+          shadowSize: [41, 41],
+        }),
+        unknown: L.icon({
+          iconUrl: iconBase + "marker-icon-2x-grey.png",
+          iconSize: [25, 41],
+          iconAnchor: [12, 41],
+          popupAnchor: [1, -34],
+          shadowUrl: iconBase + "marker-shadow.png",
+          shadowSize: [41, 41],
+        }),
+      };
+
+      // Function to get appropriate icon
+      function getIcon(status) {
+        if (!status) return icons.unknown;
+
+        var statusLower = status.toString().toLowerCase();
+        if (statusLower.includes("onshore")) return icons.onshore;
+        if (statusLower.includes("offshore")) return icons.offshore;
+        if (statusLower.includes("inland")) return icons.inland;
+        return icons.unknown;
+      }
+
+      // Load and display data
+      fetch("data.json")
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          document.getElementById("loading").style.display = "none";
+
+          if (!Array.isArray(data) || data.length === 0) {
+            throw new Error("No data found or invalid data format");
+          }
+
+          var stats = { onshore: 0, offshore: 0, inland: 0, unknown: 0 };
+          var markers = [];
+
+          data.forEach((point, index) => {
+            var lat = parseFloat(point.lat);
+            var lon = parseFloat(point.lon);
+            var status = point.status || "Unknown";
+
+            if (
+              !isNaN(lat) &&
+              !isNaN(lon) &&
+              lat >= -90 &&
+              lat <= 90 &&
+              lon >= -180 &&
+              lon <= 180
+            ) {
+              var icon = getIcon(status);
+
+              // Count statistics
+              var statusLower = status.toLowerCase();
+              if (statusLower.includes("onshore")) stats.onshore++;
+              else if (statusLower.includes("offshore")) stats.offshore++;
+              else if (statusLower.includes("inland")) stats.inland++;
+              else stats.unknown++;
+
+              // Create marker
+              var marker = L.marker([lat, lon], { icon: icon }).bindPopup(`
+                                <div style="text-align: center;">
+                                    <h4 style="margin: 0 0 8px 0; color: #2c3e50;">Point #${
+                                      index + 1
+                                    }</h4>
+                                    <p style="margin: 4px 0;"><strong>Status:</strong> ${status}</p>
+                                    <p style="margin: 4px 0;"><strong>Latitude:</strong> ${lat.toFixed(
+                                      6
+                                    )}</p>
+                                    <p style="margin: 4px 0;"><strong>Longitude:</strong> ${lon.toFixed(
+                                      6
+                                    )}</p>
+                                </div>
+                            `);
+
+              markers.push(marker);
+              marker.addTo(map);
+            }
+          });
+
+          // Add legend with statistics
+          var legend = L.control({ position: "bottomright" });
+          legend.onAdd = function () {
+            var div = L.DomUtil.create("div", "legend");
+            div.innerHTML = `
+                        <h4>🗺️ Shore Status Legend</h4>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #4CAF50;"></div>
+                            <span>Onshore (${stats.onshore})</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #2196F3;"></div>
+                            <span>Offshore (${stats.offshore})</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #FF9800;"></div>
+                            <span>Inland (${stats.inland})</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: #9E9E9E;"></div>
+                            <span>Unknown (${stats.unknown})</span>
+                        </div>
+                        <div class="stats">
+                            📊 Total Points: ${data.length}<br>
+                            🕒 Last Updated: ${new Date().toLocaleDateString()}
+                        </div>
+                    `;
+            return div;
+          };
+          legend.addTo(map);
+
+          // Fit map to show all markers
+          if (markers.length > 0) {
+            var group = new L.featureGroup(markers);
+            map.fitBounds(group.getBounds().pad(0.05));
+
+            // Ensure minimum zoom level
+            if (map.getZoom() > 10) {
+              map.setZoom(10);
+            }
+          }
+
+          console.log(`Loaded ${data.length} points successfully`);
+        })
+        .catch((error) => {
+          console.error("Error loading data:", error);
+          document.getElementById("loading").innerHTML = `
+                    <div class="error">
+                        <h3>❌ Error Loading Data</h3>
+                        <p>${error.message}</p>
+                        <p>Please check that the data.json file exists and is properly formatted.</p>
+                        <button onclick="location.reload()" class="btn" style="margin-top: 10px; border: none; cursor: pointer;">
+                            🔄 Retry
+                        </button>
+                    </div>
+                `;
+        });
+    </script>
+  </body>
+</html>
