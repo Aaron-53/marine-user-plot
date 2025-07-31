@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+.vercel
+
+# Uploaded files
+uploads/*.xlsx
+uploads/*.xls
+uploads/*.csv
+!uploads/.gitkeep

@@ -1,0 +1,75 @@
+name: Process Marine Data and Deploy Static Site
+
+on:
+  push:
+    branches: [main, original]
+  pull_request:
+    branches: [main, original]
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  process-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas openpyxl geopandas shapely
+
+      - name: Check if marine.xlsx exists
+        run: |
+          if [ -f "marine.xlsx" ]; then
+            echo "marine.xlsx found"
+            ls -la marine.xlsx
+          else
+            echo "marine.xlsx not found, checking uploads folder"
+            # Check for existing marine files in uploads folder
+            if [ -f "uploads/20250727_094245_marine.xlsx" ]; then
+              echo "Using existing marine file from uploads"
+              cp uploads/20250727_094245_marine.xlsx marine.xlsx
+            else
+              echo "No marine data found. Please add marine.xlsx to repository root or uploads folder."
+              exit 1
+            fi
+          fi
+
+      - name: Run actual classification script
+        run: |
+          echo "Running classification script..."
+          python script.py
+
+      - name: Use existing static website
+        run: |
+          mkdir -p docs
+          # Copy the existing static site file as index.html
+          cp static-site.html docs/index.html
+
+      - name: Copy processed file to docs
+        run: |
+          cp output.xlsx docs/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          personal_token: ${{ secrets.PERSONAL_TOKEN }}
+          name: processed-marine-data
+          path: |
+            output.xlsx
+            docs/
+            
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/original'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+
