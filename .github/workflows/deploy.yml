@@ -14,6 +14,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -47,14 +49,15 @@ jobs:
           echo "Running classification script..."
           python script.py
 
-      - name: Use existing static website
+      - name: Commit and push processed files
         run: |
-          mkdir -p docs
-          cp index.html docs/index.html
-
-      - name: Copy processed file to docs
-        run: |
-          cp output.xlsx docs/
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add output.xlsx
+          git add index.html
+          # Only commit if there are changes
+          git diff --staged --quiet || git commit -m "Update processed marine data and website [skip ci]"
+          git push
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -62,12 +65,4 @@ jobs:
           name: processed-marine-data
           path: |
             output.xlsx
-            docs/
-
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/original'
-        with:
-          personal_token: ${{ secrets.GITHUB_TOKEN  }}
-          publish_dir: ./docs
-
+            index.html
