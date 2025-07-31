@@ -47,10 +47,13 @@ jobs:
           echo "Running classification script..."
           python script.py
 
+      - name: Rename static site as index.html
+        run: |
+          cp static-site.html index.html
 
-      # - name: Deploy to GitHub Pages
-      #   uses: peaceiris/actions-gh-pages@v3
-      #   if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/original'
-      #   with:
-      #     personal_token: ${{ secrets.PERSONAL_TOKEN }}
-      #     publish_dir: ./
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/original'
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./
